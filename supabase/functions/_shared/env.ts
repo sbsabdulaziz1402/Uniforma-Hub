@@ -6,7 +6,7 @@ export function env(name: string, required = true): string {
 
 export const BOT_TOKEN      = () => env("TELEGRAM_BOT_TOKEN");
 export const WEBHOOK_SECRET = () => env("TELEGRAM_WEBHOOK_SECRET");
-export const JWT_SECRET     = () => env("SUPABASE_JWT_SECRET");
+export const JWT_SECRET     = () => env("APP_JWT_SECRET");
 export const SUPABASE_URL   = () => env("SUPABASE_URL");
 export const SERVICE_KEY    = () => env("SUPABASE_SERVICE_ROLE_KEY");
 export const MINIAPP_URL    = () => env("MINIAPP_URL");

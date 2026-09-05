@@ -69,14 +69,14 @@ supabase db push
 supabase secrets set \
   TELEGRAM_BOT_TOKEN=<токен от @BotFather> \
   TELEGRAM_WEBHOOK_SECRET=<любая случайная строка> \
-  SUPABASE_JWT_SECRET=<Settings → API → JWT Secret> \
+  APP_JWT_SECRET=<Settings → API → JWT Secret> \
   MINIAPP_URL=https://<ваш-проект>.vercel.app
 
 supabase functions deploy auth
 supabase functions deploy bot
 ```
 
-`SUPABASE_JWT_SECRET` — это legacy HS256-секрет проекта. Если в проекте
+`APP_JWT_SECRET` — это legacy HS256-секрет проекта. Если в проекте
 включены асимметричные ключи, secret всё равно доступен в Settings → API;
 именно им подписываются наши токены.
 
