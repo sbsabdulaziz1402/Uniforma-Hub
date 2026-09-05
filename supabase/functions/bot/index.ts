@@ -77,6 +77,21 @@ bot.command("start", async (ctx) => {
   );
 });
 
+// Inline-кнопка: на macOS reply-клавиатура открывает Mini App без initData,
+// а inline-кнопка передаёт данные авторизации корректно.
+bot.command("app", async (ctx) => {
+  const staff = await findStaff(ctx.from!.id);
+  if (!staff) return ctx.reply("Сначала войдите: /start");
+
+  const url = staff.role === "seamstress" ? `${app}/tasks`
+            : staff.role === "manager"    ? `${app}/orders`
+            : `${app}/finance`;
+
+  await ctx.reply("Открыть Uniforma Hub:", {
+    reply_markup: new InlineKeyboard().webApp("🚀 Открыть приложение", url),
+  });
+});
+
 bot.on("message:contact", async (ctx) => {
   const contact = ctx.message.contact;
 
