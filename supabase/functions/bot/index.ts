@@ -40,15 +40,15 @@ function menuFor(role: string) {
   const kb = new Keyboard().resized().persistent();
   if (role === "seamstress") {
     kb.text("🧵 Добавить в закуп").row()
-      .webApp("📋 Мои задачи", `${app}/#/tasks`)
-      .webApp("💰 Мой заработок", `${app}/#/earnings`);
+      .webApp("📋 Мои задачи", `${app}/tasks`)
+      .webApp("💰 Мой заработок", `${app}/earnings`);
   } else if (role === "manager") {
-    kb.webApp("📦 Заказы", `${app}/#/orders`).webApp("🛒 Закуп", `${app}/#/supply`).row()
-      .webApp("🧑‍🏭 Задачи", `${app}/#/tasks`).webApp("👤 Заказчики", `${app}/#/clients`);
+    kb.webApp("📦 Заказы", `${app}/orders`).webApp("🛒 Закуп", `${app}/supply`).row()
+      .webApp("🧑‍🏭 Задачи", `${app}/tasks`).webApp("👤 Заказчики", `${app}/clients`);
   } else {
-    kb.webApp("📊 Финансы", `${app}/#/finance`).webApp("📦 Заказы", `${app}/#/orders`).row()
-      .webApp("💵 Зарплата", `${app}/#/payroll`).webApp("🛒 Закуп", `${app}/#/supply`).row()
-      .webApp("👥 Сотрудники", `${app}/#/staff`);
+    kb.webApp("📊 Финансы", `${app}/finance`).webApp("📦 Заказы", `${app}/orders`).row()
+      .webApp("💵 Зарплата", `${app}/payroll`).webApp("🛒 Закуп", `${app}/supply`).row()
+      .webApp("👥 Сотрудники", `${app}/staff`);
   }
   return kb;
 }
