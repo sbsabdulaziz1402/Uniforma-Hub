@@ -35,3 +35,52 @@ export const haptic = (kind: "tap" | "ok" | "err" = "tap") => {
 
 export const confirm = (msg: string) =>
   new Promise<boolean>((res) => tg().showConfirm(msg, res));
+
+/**
+ * Достаёт initData из всех мест, куда Telegram их кладёт.
+ *
+ * WebApp.initData на части клиентов остаётся пустым (Desktop/macOS,
+ * открытие из кешированной клавиатуры), но сами данные при этом есть
+ * во фрагменте URL и в sessionStorage — их пишет telegram-web-app.js.
+ */
+export function getInitData(): string {
+  try {
+    const fromSdk = tg().initData;
+    if (fromSdk) return fromSdk;
+  } catch { /* SDK не загрузился */ }
+
+  // 1) фрагмент URL: #tgWebAppData=...
+  try {
+    const p = new URLSearchParams(location.hash.replace(/^#/, ""));
+    const v = p.get("tgWebAppData");
+    if (v) return v;
+  } catch { /* пусто */ }
+
+  // 2) то, что telegram-web-app.js сохранил при первом запуске
+  try {
+    const raw = sessionStorage.getItem("__telegram__initParams");
+    if (raw) {
+      const v = JSON.parse(raw)?.tgWebAppData;
+      if (v) return v as string;
+    }
+  } catch { /* приватный режим */ }
+
+  return "";
+}
+
+/** Что реально видно на клиенте — для экрана ошибки. */
+export function diagnostics(): Record<string, string> {
+  let w: Partial<WebApp> = {};
+  try { w = tg(); } catch { /* нет SDK */ }
+  let stored = "нет";
+  try { stored = sessionStorage.getItem("__telegram__initParams") ? "есть" : "нет"; } catch { stored = "недоступен"; }
+  return {
+    "Telegram SDK": (window as unknown as { Telegram?: unknown }).Telegram ? "загружен" : "НЕ загружен",
+    "версия": (w as { version?: string }).version ?? "—",
+    "платформа": (w as { platform?: string }).platform ?? "—",
+    "initData (SDK)": w.initData ? `${w.initData.length} символов` : "пусто",
+    "хеш URL": location.hash ? `${location.hash.slice(0, 60)}…` : "пусто",
+    "путь": location.pathname,
+    "sessionStorage": stored,
+  };
+}

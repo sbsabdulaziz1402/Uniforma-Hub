@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { Me, Settings, signIn } from "./lib/api";
-import { tg } from "./lib/tg";
+import { diagnostics, getInitData, tg } from "./lib/tg";
 
 import Home from "./screens/Home";
 import Tasks from "./screens/Tasks";
@@ -26,7 +26,7 @@ export default function App() {
     w.expand();
     w.disableVerticalSwipes?.();
 
-    const initData = w.initData;
+    const initData = getInitData();
     if (!initData) {
       setError("Откройте приложение через бота @UniformaHubBot");
       return;
@@ -39,7 +39,22 @@ export default function App() {
           : e.message));
   }, []);
 
-  if (error) return <div className="empty">{error}</div>;
+  if (error) {
+    return (
+      <div className="page">
+        <div className="empty" style={{ paddingBottom: 16 }}>{error}</div>
+        <div className="card">
+          <div className="stat-label" style={{ marginBottom: 8 }}>Диагностика</div>
+          {Object.entries(diagnostics()).map(([k, v]) => (
+            <div className="row" key={k} style={{ fontSize: 13, padding: "3px 0" }}>
+              <span className="hint">{k}</span>
+              <span style={{ textAlign: "right", wordBreak: "break-all" }}>{v}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
   if (!ctx) return <div className="empty">Загрузка…</div>;
 
   const role = ctx.me.role;
