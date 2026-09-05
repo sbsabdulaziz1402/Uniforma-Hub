@@ -1,0 +1,10 @@
+project_id = "uniforma-hub"
+
+[functions.auth]
+# initData проверяем сами внутри функции, поэтому Supabase-JWT здесь не нужен
+verify_jwt = false
+
+[functions.bot]
+# Telegram не умеет слать Authorization; подлинность вебхука
+# проверяется заголовком X-Telegram-Bot-Api-Secret-Token
+verify_jwt = false
