@@ -114,7 +114,9 @@ function TabBar({ role }: { role: Me["role"] }) {
     <nav className="tabbar">
       {left.map(link)}
       {canCreate && (
-        <button className="fab" aria-label="Новый заказ" onClick={() => nav("/orders/new")}>+</button>
+        <div className="fab-slot">
+          <button className="fab" aria-label="Новый заказ" onClick={() => nav("/orders/new")}>+</button>
+        </div>
       )}
       {right.map(link)}
     </nav>

@@ -89,6 +89,7 @@ export default function Profile() {
           <Item to="/supply" icon="🛒" title="Закуп материалов" />
           {isRoot && <Item to="/catalog/garments" icon="👕" title="Изделия" note="справочник" />}
           {isRoot && <Item to="/catalog/materials" icon="🧵" title="Материалы" note="справочник" />}
+          {isMgr && <Item to="/catalog/agencies" icon="🏛" title="Госорганы" note="справочник" />}
         </>
       )}
 

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { db } from "../lib/api";
 import { phoneMask, toE164 } from "../lib/format";
 import { haptic, tg } from "../lib/tg";
+import Select from "../components/Select";
 
 interface Client { id: string; name: string; phone: string | null; agency: string | null }
 
@@ -217,21 +218,25 @@ export default function NewOrder() {
 
       {/* --- Материал --- */}
       <label>Материал <span className="hint">— необязательно</span></label>
-      <select value={materialId} onChange={(e) => setMaterialId(e.target.value)}>
-        <option value="">Не выбран</option>
-        {(materials.data ?? []).map((m) => (
-          <option key={m.id} value={m.id}>{m.name}</option>
-        ))}
-      </select>
+      <Select
+        value={materialId}
+        onChange={(v) => setMaterialId(v as string)}
+        title="Материал"
+        placeholder="Не выбран"
+        options={[{ value: "", label: "Не выбран" },
+          ...(materials.data ?? []).map((m) => ({ value: m.id, label: m.name, note: m.unit }))]}
+      />
 
       {/* --- Швея --- */}
       <label>Швея <span className="hint">— можно назначить позже</span></label>
-      <select value={seamstressId} onChange={(e) => setSeamstressId(e.target.value)}>
-        <option value="">Не назначена</option>
-        {(seamstresses.data ?? []).map((s) => (
-          <option key={s.id} value={s.id}>{s.full_name}</option>
-        ))}
-      </select>
+      <Select
+        value={seamstressId}
+        onChange={(v) => setSeamstressId(v as string)}
+        title="Швея"
+        placeholder="Не назначена"
+        options={[{ value: "", label: "Не назначена" },
+          ...(seamstresses.data ?? []).map((s) => ({ value: s.id, label: s.full_name }))]}
+      />
 
       <label>Срок сдачи</label>
       <div className="field"><span className="ico-l">📅</span><input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} /></div>

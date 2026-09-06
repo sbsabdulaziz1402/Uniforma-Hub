@@ -4,6 +4,7 @@ import FinanceGate from "../components/FinanceGate";
 import { db } from "../lib/api";
 import { dateTime, uzs } from "../lib/format";
 import { haptic, tg } from "../lib/tg";
+import Select from "../components/Select";
 
 export default function Payroll() {
   return <FinanceGate><Board /></FinanceGate>;
@@ -102,11 +103,16 @@ function PayForm({ target, onDone }: {
       </div>
 
       <label>Способ</label>
-      <select value={method} onChange={(e) => setMethod(e.target.value)}>
-        <option value="cash">Наличные</option>
-        <option value="card">Карта</option>
-        <option value="transfer">Перечисление</option>
-      </select>
+      <Select
+        value={method}
+        onChange={(v) => setMethod(v as string)}
+        title="Способ выплаты"
+        options={[
+          { value: "cash", label: "Наличные" },
+          { value: "card", label: "Карта" },
+          { value: "transfer", label: "Перечисление" },
+        ]}
+      />
 
       <label>Комментарий</label>
       <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="аванс за сентябрь" />

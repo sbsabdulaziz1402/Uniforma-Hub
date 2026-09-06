@@ -4,6 +4,7 @@ import { useApp } from "../App";
 import { db } from "../lib/api";
 import { dateTime, phoneMask, toE164 } from "../lib/format";
 import { confirm, haptic, tg } from "../lib/tg";
+import Select from "../components/Select";
 
 const ROLE_LABEL = { root_admin: "Администратор", manager: "Менеджер", seamstress: "Швея" } as const;
 
@@ -131,11 +132,16 @@ function AddStaff({ onDone }: { onDone: () => void }) {
       </div>
 
       <label>Роль</label>
-      <select value={role} onChange={(e) => setRole(e.target.value)}>
-        <option value="seamstress">Швея — свои задачи и заработок</option>
-        <option value="manager">Менеджер — заказы, задачи, закуп</option>
-        <option value="root_admin">Администратор — всё, включая финансы</option>
-      </select>
+      <Select
+        value={role}
+        onChange={(v) => setRole(v as string)}
+        title="Роль"
+        options={[
+          { value: "seamstress", label: "Швея", note: "свои задачи и заработок" },
+          { value: "manager", label: "Менеджер", note: "заказы, задачи, закуп" },
+          { value: "root_admin", label: "Администратор", note: "всё, включая финансы" },
+        ]}
+      />
 
       {err && <div style={{ color: "var(--danger)", marginTop: 12, fontSize: 14 }}>{err}</div>}
 
