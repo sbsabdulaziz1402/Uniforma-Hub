@@ -87,6 +87,7 @@ export default function Profile() {
         <>
           <div className="stat-label" style={{ margin: "22px 4px 10px" }}>Цех</div>
           <Item to="/supply" icon="🛒" title="Закуп материалов" />
+          <Item to="/supply/new" icon="🧵" title="Заявка на закуп" />
           {isRoot && <Item to="/catalog/garments" icon="👕" title="Изделия" note="справочник" />}
           {isRoot && <Item to="/catalog/materials" icon="🧵" title="Материалы" note="справочник" />}
           {isMgr && <Item to="/catalog/agencies" icon="🏛" title="Госорганы" note="справочник" />}
@@ -114,6 +115,7 @@ export default function Profile() {
         <>
           <div className="stat-label" style={{ margin: "22px 4px 10px" }}>Моё</div>
           <Item to="/earnings" icon="💰" title="Мой заработок" />
+          <Item to="/supply/new" icon="🧵" title="Заявка на закуп" note="что закончилось" />
         </>
       )}
     </div>

@@ -1,9 +1,13 @@
 // =====================================================================
-// Telegram-бот: вход по номеру телефона, меню, заявки на закуп,
-// уведомления из БД.
+// Telegram-бот.
 //
-//   POST /bot           — webhook Telegram
-//   POST /bot/notify    — уведомления (Database Webhooks), заголовок x-webhook-secret
+//   Сотрудник  — видит только синюю кнопку «Открыть» слева от поля ввода,
+//                вся работа идёт в Mini App. Клавиатур в чате нет.
+//   Клиент     — оформляет заказ прямо в переписке: изделие → материал →
+//                количество → цена → подтверждение.
+//
+//   POST /bot         — webhook Telegram
+//   POST /bot/notify  — уведомления из БД, заголовок x-webhook-secret
 // =====================================================================
 
 import { Bot, InlineKeyboard, Keyboard, webhookCallback } from "npm:grammy@1";
@@ -15,18 +19,18 @@ const db = createClient(SUPABASE_URL(), SERVICE_KEY(), { auth: { persistSession:
 const bot = new Bot(BOT_TOKEN());
 const app = MINIAPP_URL();
 
-const uzs = (n: number) => new Intl.NumberFormat("ru-RU").format(n) + " сум";
+const uzs = (n: number) => new Intl.NumberFormat("ru-RU").format(Math.round(n)) + " сум";
 
 // ---------- Сессии диалога ---------------------------------------------
 
-async function getState(tgId: number) {
+type State = Record<string, unknown>;
+
+async function getState(tgId: number): Promise<State> {
   const { data } = await db.from("bot_sessions").select("state").eq("telegram_id", tgId).maybeSingle();
-  return (data?.state ?? {}) as Record<string, unknown>;
+  return (data?.state ?? {}) as State;
 }
-async function setState(tgId: number, state: Record<string, unknown>) {
-  await db.from("bot_sessions")
-    .upsert({ telegram_id: tgId, state, updated_at: new Date().toISOString() });
-}
+const setState = (tgId: number, state: State) =>
+  db.from("bot_sessions").upsert({ telegram_id: tgId, state, updated_at: new Date().toISOString() });
 const clearState = (tgId: number) => setState(tgId, {});
 
 async function findStaff(tgId: number) {
@@ -34,226 +38,275 @@ async function findStaff(tgId: number) {
   return data && data.is_active && !data.archived_at ? data : null;
 }
 
-// ---------- Меню --------------------------------------------------------
+// ---------- Кнопка «Открыть» -------------------------------------------
+// Персональная на чат: сотруднику — вход в Mini App, клиенту — обычное меню,
+// иначе он нажмёт «Открыть» и упрётся в «доступ не выдан».
 
-function menuFor(role: string) {
-  const kb = new Keyboard().resized().persistent();
-  if (role === "seamstress") {
-    kb.text("🧵 Добавить в закуп").row()
-      .webApp("📋 Мои задачи", `${app}/tasks`)
-      .webApp("💰 Мой заработок", `${app}/earnings`);
-  } else if (role === "manager") {
-    kb.webApp("📦 Заказы", `${app}/orders`).webApp("🛒 Закуп", `${app}/supply`).row()
-      .webApp("🧑‍🏭 Задачи", `${app}/tasks`).webApp("👤 Заказчики", `${app}/clients`);
-  } else {
-    kb.webApp("📊 Финансы", `${app}/finance`).webApp("📦 Заказы", `${app}/orders`).row()
-      .webApp("💵 Зарплата", `${app}/payroll`).webApp("🛒 Закуп", `${app}/supply`).row()
-      .webApp("👥 Сотрудники", `${app}/staff`);
-  }
-  return kb;
+async function setMenu(chatId: number, forStaff: boolean) {
+  try {
+    await bot.api.setChatMenuButton({
+      chat_id: chatId,
+      menu_button: forStaff
+        ? { type: "web_app", text: "Открыть", web_app: { url: app } }
+        : { type: "commands" },
+    });
+  } catch { /* старый клиент — переживём */ }
 }
 
-const greet = (name: string, role: string) =>
-  `Здравствуйте, ${name}!\n\n` +
-  (role === "seamstress"
-    ? "Здесь ваши задачи, заработок и заявки на закуп материалов."
-    : "Uniforma Hub — управление ателье.");
-
-// ---------- /start и вход по номеру -------------------------------------
+// ---------- /start ------------------------------------------------------
 
 bot.command("start", async (ctx) => {
-  const staff = await findStaff(ctx.from!.id);
+  const tgId = ctx.from!.id;
+  await clearState(tgId);
+
+  const staff = await findStaff(tgId);
   if (staff) {
-    await clearState(ctx.from!.id);
-    return ctx.reply(greet(staff.full_name, staff.role), { reply_markup: menuFor(staff.role) });
+    await setMenu(ctx.chat.id, true);
+    await db.from("staff").update({ last_seen_at: new Date().toISOString() }).eq("id", staff.id);
+    return ctx.reply(
+      `Здравствуйте, ${staff.full_name}!\n\n` +
+      `Вся работа — в приложении: нажмите синюю кнопку «Открыть» слева от поля ввода.`,
+      { reply_markup: { remove_keyboard: true } },
+    );
   }
+
+  await setMenu(ctx.chat.id, false);
   await ctx.reply(
-    "Для входа в Uniforma Hub подтвердите свой номер телефона.\n\n" +
-    "Доступ выдаётся администратором ателье — если номера нет в списке сотрудников, вход не откроется.",
-    {
-      reply_markup: new Keyboard()
-        .requestContact("📱 Отправить мой номер").resized().oneTime(),
-    },
+    "Ателье «Uniforma Hub» — пошив форменной одежды на заказ.\n\n" +
+    "Выберите изделие и материал — увидите стоимость сразу, до оформления.",
+    { reply_markup: new InlineKeyboard().text("🧵 Оформить заказ", "ord:start") },
   );
 });
 
-// Inline-кнопка: на macOS reply-клавиатура открывает Mini App без initData,
-// а inline-кнопка передаёт данные авторизации корректно.
+// Сотрудник мог войти после того, как уже писал боту как гость
 bot.command("app", async (ctx) => {
   const staff = await findStaff(ctx.from!.id);
-  if (!staff) return ctx.reply("Сначала войдите: /start");
-
-  const url = staff.role === "seamstress" ? `${app}/tasks`
-            : staff.role === "manager"    ? `${app}/orders`
-            : `${app}/finance`;
-
+  if (!staff) return ctx.reply("Приложение доступно сотрудникам ателье.");
+  await setMenu(ctx.chat.id, true);
   await ctx.reply("Открыть Uniforma Hub:", {
-    reply_markup: new InlineKeyboard().webApp("🚀 Открыть приложение", url),
+    reply_markup: new InlineKeyboard().webApp("🚀 Открыть приложение", app),
   });
 });
+
+// ---------- Оформление заказа клиентом ----------------------------------
+
+async function showGarments(ctx: { reply: (t: string, o?: unknown) => Promise<unknown> }, tgId: number) {
+  const { data: garments } = await db.from("garment_types")
+    .select("id,name,base_price_uzs").eq("is_active", true).order("sort_order");
+
+  if (!garments?.length) {
+    return ctx.reply("Каталог пока пуст. Напишите нам позже.");
+  }
+
+  const kb = new InlineKeyboard();
+  garments.forEach((g, i) => kb.text(`${g.name} — ${uzs(g.base_price_uzs)}`, `ord:g:${i}`).row());
+
+  await setState(tgId, { flow: "order", step: "garment", garments });
+  await ctx.reply("Что будем шить?", { reply_markup: kb });
+}
+
+bot.callbackQuery("ord:start", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await showGarments(ctx, ctx.from.id);
+});
+
+bot.callbackQuery(/^ord:g:\d+$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const st = await getState(ctx.from.id);
+  const garments = (st.garments ?? []) as { id: string; name: string; base_price_uzs: number }[];
+  const g = garments[Number(ctx.callbackQuery.data.split(":")[2])];
+  if (!g) return ctx.reply("Список устарел, начните заново: /start");
+
+  // материалы, привязанные к изделию; если привязок нет — показываем общие
+  const { data: linked } = await db.from("material_garments")
+    .select("materials(id,name,price_per_unit_uzs,client_visible)")
+    .eq("garment_type_id", g.id);
+
+  let materials = (linked ?? [])
+    .map((r) => (r as unknown as { materials: Material }).materials)
+    .filter((m) => m && m.client_visible);
+
+  if (!materials.length) {
+    const { data } = await db.from("materials")
+      .select("id,name,price_per_unit_uzs,client_visible")
+      .eq("is_active", true).eq("client_visible", true).limit(8);
+    materials = (data ?? []) as Material[];
+  }
+
+  const kb = new InlineKeyboard();
+  materials.forEach((m, i) => {
+    const add = m.price_per_unit_uzs > 0 ? ` (+${uzs(m.price_per_unit_uzs)})` : "";
+    kb.text(`${m.name}${add}`, `ord:m:${i}`).row();
+  });
+  kb.text("Без выбора материала", "ord:m:-1");
+
+  await setState(ctx.from.id, { ...st, step: "material", garment: g, materials });
+  await ctx.reply(`${g.name} — ${uzs(g.base_price_uzs)}\n\nИз какого материала?`, { reply_markup: kb });
+});
+
+bot.callbackQuery(/^ord:m:-?\d+$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const st = await getState(ctx.from.id);
+  const idx = Number(ctx.callbackQuery.data.split(":")[2]);
+  const materials = (st.materials ?? []) as Material[];
+  const m = idx >= 0 ? materials[idx] : null;
+
+  await setState(ctx.from.id, { ...st, step: "qty", material: m });
+  await ctx.reply("Сколько штук? Напишите число.");
+});
+
+bot.callbackQuery("ord:confirm", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const st = await getState(ctx.from.id);
+
+  const { data: client } = await db.from("clients")
+    .select("id,phone,name").eq("telegram_id", ctx.from.id).maybeSingle();
+
+  if (!client?.phone) {
+    await setState(ctx.from.id, { ...st, step: "contact" });
+    return ctx.reply(
+      "Остался последний шаг — подтвердите номер телефона, чтобы мы могли связаться.",
+      { reply_markup: new Keyboard().requestContact("📱 Отправить мой номер").resized().oneTime() },
+    );
+  }
+  await createOrder(ctx, st, client.id);
+});
+
+bot.callbackQuery("ord:restart", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await showGarments(ctx, ctx.from.id);
+});
+
+// ---------- Контакт: и вход сотрудника, и подтверждение клиента ---------
 
 bot.on("message:contact", async (ctx) => {
   const contact = ctx.message.contact;
 
-  // Критично: принимаем только СВОЙ контакт. Иначе кто угодно
-  // переслал бы карточку сотрудника и вошёл под ним.
+  // принимаем только собственный контакт: иначе пересланной карточкой
+  // можно было бы войти под чужим сотрудником
   if (contact.user_id !== ctx.from.id) {
     return ctx.reply("Отправьте, пожалуйста, свой собственный номер кнопкой ниже.");
   }
 
   let phone: string;
-  try {
-    phone = normalizePhone(contact.phone_number);
-  } catch {
-    return ctx.reply("Не удалось распознать номер. Обратитесь к администратору.");
-  }
+  try { phone = normalizePhone(contact.phone_number); }
+  catch { return ctx.reply("Не удалось распознать номер."); }
 
+  // 1) это сотрудник?
   const { data: staff } = await db.from("staff").select("*").eq("phone", phone).maybeSingle();
-
-  if (!staff || !staff.is_active || staff.archived_at) {
+  if (staff && staff.is_active && !staff.archived_at) {
+    await db.from("staff").update({
+      telegram_id: ctx.from.id, last_seen_at: new Date().toISOString(),
+    }).eq("id", staff.id);
+    await db.from("audit_log").insert({
+      actor_staff_id: staff.id, action: "auth.linked_telegram",
+      target_table: "staff", target_id: staff.id, diff: { telegram_id: ctx.from.id },
+    });
+    await setMenu(ctx.chat.id, true);
     return ctx.reply(
-      `Номер ${phone} не найден среди сотрудников ателье.\n` +
-      "Попросите администратора добавить вас в систему.",
+      `Здравствуйте, ${staff.full_name}!\n\nНажмите синюю кнопку «Открыть» слева от поля ввода.`,
       { reply_markup: { remove_keyboard: true } },
     );
   }
 
-  await db.from("staff").update({
-    telegram_id: ctx.from.id,
-    last_seen_at: new Date().toISOString(),
-  }).eq("id", staff.id);
+  // 2) значит клиент — заводим карточку и завершаем заказ
+  const fullName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(" ") || phone;
+  const { data: existing } = await db.from("clients").select("id").eq("phone", phone).maybeSingle();
 
-  await db.from("audit_log").insert({
-    actor_staff_id: staff.id, action: "auth.linked_telegram",
-    target_table: "staff", target_id: staff.id, diff: { telegram_id: ctx.from.id },
-  });
-
-  await ctx.reply(greet(staff.full_name, staff.role), { reply_markup: menuFor(staff.role) });
-});
-
-// ---------- Заявка на закуп: item -> qty -> urgency ---------------------
-
-bot.hears("🧵 Добавить в закуп", async (ctx) => {
-  const staff = await findStaff(ctx.from!.id);
-  if (!staff) return ctx.reply("Сначала войдите: /start");
-
-  const since = new Date(Date.now() - 3600_000).toISOString();
-  const { count } = await db.from("supply_requests")
-    .select("id", { count: "exact", head: true })
-    .eq("requested_by_staff_id", staff.id).gte("created_at", since);
-  const { data: cfg } = await db.from("app_settings").select("supply_requests_per_hour").eq("id", 1).single();
-
-  if ((count ?? 0) >= (cfg?.supply_requests_per_hour ?? 10)) {
-    return ctx.reply("Слишком много заявок за час. Попробуйте позже или напишите менеджеру.");
-  }
-
-  // подсказываем то, что этот человек заказывал чаще всего
-  const { data: recent } = await db.from("supply_requests")
-    .select("item_name_raw, material_id")
-    .eq("requested_by_staff_id", staff.id)
-    .order("created_at", { ascending: false }).limit(20);
-
-  // callback_data ограничен 64 байтами, поэтому в кнопку кладём только
-  // индекс, а сами варианты храним в сессии
-  const options: { id: string | null; name: string }[] = [];
-  const seen = new Set<string>();
-  for (const r of recent ?? []) {
-    if (seen.has(r.item_name_raw) || options.length >= 6) continue;
-    seen.add(r.item_name_raw);
-    options.push({ id: r.material_id, name: r.item_name_raw });
-  }
-  if (options.length === 0) {
-    const { data: mats } = await db.from("materials").select("id,name").eq("is_active", true).limit(6);
-    for (const m of mats ?? []) options.push({ id: m.id, name: m.name });
-  }
-
-  const kb = new InlineKeyboard();
-  options.forEach((o, i) => kb.text(o.name, `sup:item:${i}`).row());
-  kb.text("✏️ Другое (написать)", "sup:item:custom");
-
-  await setState(ctx.from!.id, { flow: "supply", step: "item", options });
-  await ctx.reply("Что закончилось?", { reply_markup: kb });
-});
-
-bot.callbackQuery(/^sup:item:/, async (ctx) => {
-  const arg = ctx.callbackQuery.data.slice("sup:item:".length);
-  await ctx.answerCallbackQuery();
-
-  if (arg === "custom") {
-    await setState(ctx.from.id, { flow: "supply", step: "item_text" });
-    return ctx.reply("Напишите название материала:");
+  let clientId = existing?.id;
+  if (clientId) {
+    await db.from("clients").update({ telegram_id: ctx.from.id }).eq("id", clientId);
+  } else {
+    const { data, error } = await db.from("clients")
+      .insert({ name: fullName, phone, telegram_id: ctx.from.id }).select("id").single();
+    if (error) return ctx.reply("Не удалось сохранить контакт. Попробуйте позже.");
+    clientId = data.id;
   }
 
   const st = await getState(ctx.from.id);
-  const options = (st.options ?? []) as { id: string | null; name: string }[];
-  const picked = options[Number(arg)];
-  if (!picked) return ctx.reply("Список устарел. Начните заново: «🧵 Добавить в закуп».");
-
-  await setState(ctx.from.id, {
-    flow: "supply", step: "qty", material_id: picked.id, item: picked.name,
-  });
-  await ctx.reply(`«${picked.name}» — сколько нужно? Напишите число.`);
-});
-
-bot.callbackQuery(/^sup:urg:/, async (ctx) => {
-  const urgency = ctx.callbackQuery.data.split(":")[2];
-  const st = await getState(ctx.from.id);
-  await ctx.answerCallbackQuery();
-
-  const staff = await findStaff(ctx.from.id);
-  if (!staff || st.flow !== "supply") return;
-
-  const { data: row, error } = await db.from("supply_requests").insert({
-    requested_by_staff_id: staff.id,
-    material_id: st.material_id ?? null,
-    item_name_raw: st.item as string,
-    qty: st.qty as number,
-    unit: (st.unit as string) ?? "шт",
-    urgency,
-  }).select("id").single();
-
-  await clearState(ctx.from.id);
-  if (error) return ctx.reply("Не удалось сохранить заявку. Попробуйте ещё раз.");
-
-  await ctx.reply(
-    `✅ Заявка принята\n${st.item} — ${st.qty}\n` +
-    (urgency === "blocking" ? "Менеджеру отправлено срочное уведомление." : "Попадёт в ближайший закуп."),
-    { reply_markup: menuFor(staff.role) },
-  );
-
-  if (urgency === "blocking") {
-    await notifyRoles(["manager", "root_admin"],
-      `🔴 СРОЧНЫЙ ЗАКУП\n${st.item} — ${st.qty}\nЗапросила: ${staff.full_name}\nПростаивает работа.`);
+  if (st.flow === "order" && st.garment) {
+    return createOrder(ctx, st, clientId!);
   }
-  void row;
+  await ctx.reply("Спасибо! Номер сохранён.", { reply_markup: { remove_keyboard: true } });
 });
 
-// текстовые шаги диалога
+// ---------- Количество текстом ------------------------------------------
+
 bot.on("message:text", async (ctx) => {
   const st = await getState(ctx.from.id);
-  if (st.flow !== "supply") return;
+  if (st.flow !== "order" || st.step !== "qty") return;
 
-  if (st.step === "item_text") {
-    const name = ctx.message.text.trim().slice(0, 120);
-    await setState(ctx.from.id, { ...st, step: "qty", item: name, material_id: null });
-    return ctx.reply(`«${name}» — сколько нужно? Напишите число.`);
-  }
+  const qty = Number(ctx.message.text.replace(/\D/g, ""));
+  if (!qty || qty < 1) return ctx.reply("Нужно число, например: 2");
 
-  if (st.step === "qty") {
-    const qty = Number(ctx.message.text.replace(",", ".").replace(/[^\d.]/g, ""));
-    if (!qty || qty <= 0) return ctx.reply("Нужно число, например: 10");
+  const g = st.garment as Garment;
+  const m = st.material as Material | null;
+  const unit = g.base_price_uzs + (m?.price_per_unit_uzs ?? 0);
+  const total = unit * qty;
 
-    await setState(ctx.from.id, { ...st, step: "urgency", qty });
-    return ctx.reply("Насколько срочно?", {
+  await setState(ctx.from.id, { ...st, step: "confirm", qty, unit, total });
+
+  await ctx.reply(
+    `Ваш заказ:\n\n` +
+    `${g.name}${m ? `, ${m.name}` : ""}\n` +
+    `${qty} шт × ${uzs(unit)}\n\n` +
+    `Итого: ${uzs(total)}\n\n` +
+    `Цена предварительная — точную подтвердит менеджер после замеров.`,
+    {
       reply_markup: new InlineKeyboard()
-        .text("🔴 Стоит работа", "sup:urg:blocking").row()
-        .text("🟡 Нужно на неделе", "sup:urg:week").row()
-        .text("⚪ Про запас", "sup:urg:stock"),
-    });
-  }
+        .text("✅ Оформить заказ", "ord:confirm").row()
+        .text("✏️ Выбрать заново", "ord:restart"),
+    },
+  );
 });
 
-// ---------- Исходящие уведомления ---------------------------------------
+// ---------- Создание заказа ---------------------------------------------
+
+async function createOrder(
+  ctx: { from: { id: number }; reply: (t: string, o?: unknown) => Promise<unknown> },
+  st: State,
+  clientId: string,
+) {
+  const g = st.garment as Garment;
+  const m = st.material as Material | null;
+  const qty = Number(st.qty ?? 1);
+  const unit = Number(st.unit ?? g.base_price_uzs);
+
+  const { data: order, error } = await db.from("orders").insert({
+    client_id: clientId,
+    title: `${g.name} — ${qty} шт`,
+    source: "client_bot",
+  }).select("id,number").single();
+
+  if (error) {
+    await clearState(ctx.from.id);
+    return ctx.reply("Не удалось оформить заявку. Позвоните нам, пожалуйста.");
+  }
+
+  await db.from("order_items").insert({
+    order_id: order.id,
+    garment_type: g.name,
+    qty,
+    unit_price_uzs: unit,
+    material_id: m?.id ?? null,
+  });
+
+  await clearState(ctx.from.id);
+
+  await ctx.reply(
+    `✅ Заявка ${order.number} принята!\n\n` +
+    `${g.name}${m ? `, ${m.name}` : ""} — ${qty} шт\n` +
+    `Предварительно: ${uzs(unit * qty)}\n\n` +
+    `Менеджер свяжется с вами в ближайшее время и согласует замеры.`,
+    { reply_markup: { remove_keyboard: true } },
+  );
+
+  await notifyRoles(["manager", "root_admin"],
+    `🆕 Заявка из бота — ${order.number}\n${g.name}${m ? `, ${m.name}` : ""} — ${qty} шт\n` +
+    `Предварительно: ${uzs(unit * qty)}`);
+}
+
+// ---------- Уведомления --------------------------------------------------
 
 async function notifyRoles(roles: string[], text: string) {
   const { data } = await db.from("staff")
@@ -270,42 +323,39 @@ async function notifyStaff(staffId: string, text: string) {
   }
 }
 
-// ---------- HTTP --------------------------------------------------------
+// ---------- HTTP ---------------------------------------------------------
 
-const handleUpdate = webhookCallback(bot, "std/http", {
-  secretToken: WEBHOOK_SECRET(),
-});
+const handleUpdate = webhookCallback(bot, "std/http", { secretToken: WEBHOOK_SECRET() });
 
 Deno.serve(async (req) => {
-  const url = new URL(req.url);
-
-  // Уведомления из БД (Supabase Database Webhooks)
-  if (url.pathname.endsWith("/notify")) {
+  if (new URL(req.url).pathname.endsWith("/notify")) {
     if (req.headers.get("x-webhook-secret") !== WEBHOOK_SECRET()) {
       return json({ error: "forbidden" }, 403);
     }
-    const body = await req.json();
+    const b = await req.json();
 
-    if (body.type === "task_assigned") {
-      await notifyStaff(body.staff_id,
-        `🧵 Новая задача\n${body.operation} — ${body.qty}\n` +
-        `Оплата: ${uzs(body.amount_uzs)}\n` +
-        (body.deadline ? `Срок: ${body.deadline}\n` : "") +
-        `Откройте «Мои задачи», чтобы взять в работу.`);
-    } else if (body.type === "task_accepted") {
-      await notifyStaff(body.staff_id, `✅ Задача принята ОТК. Начислено ${uzs(body.amount_uzs)}.`);
-    } else if (body.type === "task_rework") {
-      await notifyStaff(body.staff_id, `⚠️ Возврат на переделку.\nПричина: ${body.reason ?? "не указана"}`);
-    } else if (body.type === "salary_paid") {
-      await notifyStaff(body.staff_id,
-        `💵 Выплата ${uzs(body.amount_uzs)}.\nОстаток к выплате: ${uzs(body.balance_uzs)}`);
-    } else if (body.type === "finance_lockout") {
-      await notifyRoles(["root_admin"], "🚨 Финансы: 5 неверных попыток PIN. Доступ заблокирован на 15 минут.");
-    } else if (body.type === "custom") {
-      await notifyRoles(body.roles ?? ["root_admin"], body.text);
+    if (b.type === "task_assigned") {
+      await notifyStaff(b.staff_id,
+        `🧵 Новая задача: ${b.operation} — ${b.qty}\n` +
+        (b.deadline ? `Срок: ${b.deadline}\n` : "") +
+        "Откройте приложение кнопкой «Открыть».");
+    } else if (b.type === "task_accepted") {
+      await notifyStaff(b.staff_id, `✅ Задача принята ОТК. Начислено ${uzs(b.amount_uzs)}.`);
+    } else if (b.type === "task_rework") {
+      await notifyStaff(b.staff_id, `⚠️ Возврат на переделку.\nПричина: ${b.reason ?? "не указана"}`);
+    } else if (b.type === "salary_paid") {
+      await notifyStaff(b.staff_id, `💵 Выплата ${uzs(b.amount_uzs)}. Остаток: ${uzs(b.balance_uzs)}`);
+    } else if (b.type === "supply_blocking") {
+      await notifyRoles(["manager", "root_admin"],
+        `🔴 СРОЧНЫЙ ЗАКУП\n${b.item} — ${b.qty}\nЗапросила: ${b.who}`);
+    } else if (b.type === "custom") {
+      await notifyRoles(b.roles ?? ["root_admin"], b.text);
     }
     return json({ ok: true });
   }
 
   return await handleUpdate(req);
 });
+
+interface Garment { id: string; name: string; base_price_uzs: number }
+interface Material { id: string; name: string; price_per_unit_uzs: number; client_visible: boolean }

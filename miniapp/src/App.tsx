@@ -14,6 +14,7 @@ import Orders from "./screens/Orders";
 import NewOrder from "./screens/NewOrder";
 import Profile from "./screens/Profile";
 import Catalog from "./screens/Catalog";
+import NewSupply from "./screens/NewSupply";
 
 interface Ctx { me: Me; settings: Settings; initData: string }
 const AppCtx = createContext<Ctx | null>(null);
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/supply/new" element={<NewSupply />} />
         {!isMgr && <Route path="/earnings" element={<Earnings />} />}
         {isMgr && <Route path="/orders" element={<Orders />} />}
         {isMgr && <Route path="/orders/new" element={<NewOrder />} />}
