@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useApp } from "../App";
 import { db } from "../lib/api";
 import { uzs } from "../lib/format";
 import { haptic, tg } from "../lib/tg";
@@ -15,7 +16,11 @@ const URGENCY = {
  * схлопнуты в одну строку представлением v_supply_board.
  */
 export default function Supply() {
+  const { me } = useApp();
   const qc = useQueryClient();
+  // Проведение покупки создаёт расход, поэтому доступно только админу.
+  // Менеджер ведёт список, но сумм не вводит и не видит.
+  const canBuy = me.role === "root_admin";
   const [buying, setBuying] = useState<Row | null>(null);
 
   const board = useQuery({
@@ -36,7 +41,9 @@ export default function Supply() {
     <div className="page">
       <div className="h1">Список закупа</div>
       <div className="hint" style={{ marginBottom: 12 }}>
-        Заявки от швей. Расход в финансах появится только после отметки о покупке.
+        Заявки от швей.{canBuy
+          ? " Расход в финансах появится только после отметки о покупке."
+          : " Покупку проводит администратор."}
       </div>
 
       {(board.data ?? []).map((r) => {
@@ -53,9 +60,11 @@ export default function Supply() {
                 <span className={"badge " + u.cls}>{u.label}</span>
               </div>
             </div>
-            <button style={{ marginTop: 10 }} onClick={() => { haptic(); setBuying(r); }}>
-              Отметить купленным
-            </button>
+            {canBuy && (
+              <button style={{ marginTop: 10 }} onClick={() => { haptic(); setBuying(r); }}>
+                Отметить купленным
+              </button>
+            )}
           </div>
         );
       })}

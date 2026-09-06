@@ -18,6 +18,9 @@ export default function Tasks() {
   const { me } = useApp();
   const qc = useQueryClient();
   const isMgr = me.role !== "seamstress";
+  // Швея видит свою расценку (это её деньги), админ — всё.
+  // Менеджеру суммы не показываем: зарплата — не его зона.
+  const showMoney = me.role === "root_admin" || me.role === "seamstress";
 
   const tasks = useQuery({
     queryKey: ["tasks", me.id],
@@ -70,9 +73,10 @@ export default function Tasks() {
 
             <div className="row" style={{ marginTop: 10 }}>
               <span className="hint">
-                {t.qty} {t.operations?.unit} × {uzs(t.rate_uzs)}
+                {t.qty} {t.operations?.unit}
+                {showMoney && ` × ${uzs(t.rate_uzs)}`}
               </span>
-              <b>{uzs(t.amount_uzs)}</b>
+              {showMoney && <b>{uzs(t.amount_uzs)}</b>}
             </div>
 
             {t.deadline && (
@@ -93,7 +97,7 @@ export default function Tasks() {
               </div>
             )}
 
-            <Actions task={t} isMgr={isMgr} onMove={move.mutate} />
+            <Actions task={t} isMgr={isMgr} showMoney={showMoney} onMove={move.mutate} />
           </div>
         );
       })}
@@ -103,9 +107,10 @@ export default function Tasks() {
   );
 }
 
-function Actions({ task, isMgr, onMove }: {
+function Actions({ task, isMgr, showMoney, onMove }: {
   task: TaskRow;
   isMgr: boolean;
+  showMoney: boolean;
   onMove: (v: { id: string; status: Status; reason?: string }) => void;
 }) {
   const style = { display: "flex", gap: 8, marginTop: 12 };
@@ -125,7 +130,10 @@ function Actions({ task, isMgr, onMove }: {
     return (
       <div style={style}>
         <button onClick={async () => {
-          if (await confirm(`Принять работу и начислить ${uzs(task.amount_uzs)}?`)) {
+          const q = showMoney
+            ? `Принять работу и начислить ${uzs(task.amount_uzs)}?`
+            : "Принять работу? Начисление пройдёт автоматически.";
+          if (await confirm(q)) {
             onMove({ id: task.id, status: "accepted" });
           }
         }}>Принять</button>
