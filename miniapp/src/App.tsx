@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { Me, Settings, signIn } from "./lib/api";
 import { diagnostics, getInitData, tg } from "./lib/tg";
 
@@ -11,6 +11,7 @@ import Payroll from "./screens/Payroll";
 import Staff from "./screens/Staff";
 import Supply from "./screens/Supply";
 import Orders from "./screens/Orders";
+import NewOrder from "./screens/NewOrder";
 
 interface Ctx { me: Me; settings: Settings; initData: string }
 const AppCtx = createContext<Ctx | null>(null);
@@ -68,6 +69,7 @@ export default function App() {
         <Route path="/tasks" element={<Tasks />} />
         {!isMgr && <Route path="/earnings" element={<Earnings />} />}
         {isMgr && <Route path="/orders" element={<Orders />} />}
+        {isMgr && <Route path="/orders/new" element={<NewOrder />} />}
         {isMgr && <Route path="/supply" element={<Supply />} />}
         {isRoot && <Route path="/finance" element={<Finance />} />}
         {isRoot && <Route path="/payroll" element={<Payroll />} />}
@@ -80,6 +82,9 @@ export default function App() {
 }
 
 function TabBar({ role }: { role: Me["role"] }) {
+  const nav = useNavigate();
+  const canCreate = role !== "seamstress";
+
   const tabs = role === "seamstress"
     ? [["/", "🏠", "Главная"], ["/tasks", "📋", "Задачи"], ["/earnings", "💰", "Заработок"]]
     : role === "manager"
@@ -87,14 +92,26 @@ function TabBar({ role }: { role: Me["role"] }) {
     : [["/", "🏠", "Главная"], ["/orders", "📦", "Заказы"], ["/finance", "📊", "Финансы"],
        ["/payroll", "💵", "Зарплата"], ["/staff", "👥", "Люди"]];
 
+  // Кнопка «+» стоит в центре: это самое частое действие,
+  // и большим пальцем до середины экрана дотянуться проще всего.
+  const half = Math.ceil(tabs.length / 2);
+  const left = canCreate ? tabs.slice(0, half) : tabs;
+  const right = canCreate ? tabs.slice(half) : [];
+
+  const link = ([to, ico, label]: string[]) => (
+    <NavLink key={to} to={to} end={to === "/"} className={({ isActive }) => (isActive ? "on" : "")}>
+      <span className="ico">{ico}</span>
+      {label}
+    </NavLink>
+  );
+
   return (
     <nav className="tabbar">
-      {tabs.map(([to, ico, label]) => (
-        <NavLink key={to} to={to} end={to === "/"} className={({ isActive }) => (isActive ? "on" : "")}>
-          <span className="ico">{ico}</span>
-          {label}
-        </NavLink>
-      ))}
+      {left.map(link)}
+      {canCreate && (
+        <button className="fab" aria-label="Новый заказ" onClick={() => nav("/orders/new")}>+</button>
+      )}
+      {right.map(link)}
     </nav>
   );
 }
