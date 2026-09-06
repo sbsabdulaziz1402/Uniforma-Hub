@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApp } from "../App";
-import { db, setFinancePin } from "../lib/api";
+import { db } from "../lib/api";
 import { dateTime, phoneMask, toE164 } from "../lib/format";
 import { confirm, haptic, tg } from "../lib/tg";
-import PinPad from "../components/PinPad";
 
 const ROLE_LABEL = { root_admin: "Администратор", manager: "Менеджер", seamstress: "Швея" } as const;
 
@@ -12,7 +11,6 @@ export default function Staff() {
   const { me } = useApp();
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
-  const [pinMode, setPinMode] = useState(false);
 
   const list = useQuery({
     queryKey: ["staff"],
@@ -47,29 +45,6 @@ export default function Staff() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["staff"] }),
     onError: (e: Error) => tg().showAlert(e.message),
   });
-
-  if (pinMode) {
-    return (
-      <div className="page">
-        <PinPad
-          title="Новый PIN для финансов"
-          subtitle="6 цифр. Понадобится при каждом входе в отчёты."
-          onComplete={async (pin) => {
-            try {
-              await setFinancePin(pin);
-              tg().showAlert("PIN сохранён");
-              setPinMode(false);
-              return true;
-            } catch (e) {
-              tg().showAlert((e as Error).message);
-              return false;
-            }
-          }}
-        />
-        <button className="ghost" style={{ marginTop: 16 }} onClick={() => setPinMode(false)}>Отмена</button>
-      </div>
-    );
-  }
 
   if (adding) return <AddStaff onDone={() => { setAdding(false); qc.invalidateQueries({ queryKey: ["staff"] }); }} />;
 
@@ -114,17 +89,6 @@ export default function Staff() {
         </div>
       ))}
 
-      <div className="card" style={{ marginTop: 20 }}>
-        <div className="row">
-          <div className="col">
-            <b>PIN для финансов</b>
-            <span className="hint">{me.has_finance_pin ? "Задан" : "Не задан — отчёты недоступны"}</span>
-          </div>
-        </div>
-        <button className="ghost" style={{ marginTop: 10 }} onClick={() => setPinMode(true)}>
-          {me.has_finance_pin ? "Сменить PIN" : "Задать PIN"}
-        </button>
-      </div>
     </div>
   );
 }
