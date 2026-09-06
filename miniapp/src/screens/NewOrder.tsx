@@ -165,15 +165,16 @@ export default function NewOrder() {
   return (
     <div className="page">
       <div className="h1">Новый заказ</div>
+      <div className="sub">Найдите клиента по номеру или заведите нового</div>
 
       {/* --- Клиент --- */}
       <label>Телефон клиента</label>
-      <input
+      <div className="field"><span className="ico-l">📞</span><input
         value={phone}
         inputMode="numeric"
         onChange={(e) => setPhone(phoneMask(e.target.value))}
         placeholder="+998 90 123 45 67"
-      />
+      /></div>
 
       {!existing && (suggestions.data?.length ?? 0) > 0 && (
         <div className="card" style={{ marginTop: 6, padding: 4 }}>
@@ -194,10 +195,10 @@ export default function NewOrder() {
       )}
 
       <label>Имя клиента</label>
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Азиз Каримов" />
+      <div className="field"><span className="ico-l">👤</span><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Азиз Каримов" /></div>
 
       <label>Орган / ведомство <span className="hint">— необязательно</span></label>
-      <input value={agency} onChange={(e) => setAgency(e.target.value)} placeholder="ГУВД г. Ташкента" />
+      <div className="field"><span className="ico-l">🏛</span><input value={agency} onChange={(e) => setAgency(e.target.value)} placeholder="ГУВД г. Ташкента" /></div>
 
       {/* --- Изделие --- */}
       <label>Изделие</label>
@@ -211,8 +212,8 @@ export default function NewOrder() {
       </div>
 
       <label>Количество</label>
-      <input value={qty} inputMode="numeric"
-        onChange={(e) => setQty(e.target.value.replace(/\D/g, ""))} />
+      <div className="field"><span className="ico-l">№</span><input value={qty} inputMode="numeric"
+        onChange={(e) => setQty(e.target.value.replace(/\D/g, ""))} /></div>
 
       {/* --- Материал --- */}
       <label>Материал <span className="hint">— необязательно</span></label>
@@ -233,7 +234,7 @@ export default function NewOrder() {
       </select>
 
       <label>Срок сдачи</label>
-      <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+      <div className="field"><span className="ico-l">📅</span><input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} /></div>
 
       {err && <div style={{ color: "var(--danger)", marginTop: 12, fontSize: 14 }}>{err}</div>}
 

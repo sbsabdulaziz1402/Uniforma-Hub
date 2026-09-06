@@ -150,17 +150,18 @@ function AddStaff({ onDone }: { onDone: () => void }) {
   return (
     <div className="page">
       <div className="h1">Новый сотрудник</div>
+      <div className="sub">Человек войдёт сам — бот узнает его по номеру</div>
 
       <label>Имя и фамилия</label>
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Гулнора Каримова" />
+      <div className="field"><span className="ico-l">👤</span><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Гулнора Каримова" /></div>
 
       <label>Номер телефона</label>
-      <input
+      <div className="field"><span className="ico-l">📞</span><input
         value={phone}
         inputMode="numeric"
         onChange={(e) => setPhone(phoneMask(e.target.value))}
         placeholder="+998 90 123 45 67"
-      />
+      /></div>
       <div className="hint" style={{ marginTop: 4 }}>
         Именно по этому номеру бот узнает человека при входе.
       </div>
