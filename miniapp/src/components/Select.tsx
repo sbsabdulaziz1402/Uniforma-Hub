@@ -65,7 +65,7 @@ export default function Select({
                   onClick={() => pick(o.value)}>
                   <span>
                     {o.label}
-                    {o.note && <div className="hint">{o.note}</div>}
+                    {o.note && <span className="hint" style={{ display: "block" }}>{o.note}</span>}
                   </span>
                   {on && <span className="mark">✓</span>}
                 </button>
