@@ -326,3 +326,36 @@ input::placeholder { color: var(--hint); }
 .bar.expense { background: var(--danger); }
 
 .empty { text-align: center; color: var(--hint); padding: 56px 16px; }
+
+/* =====================================================================
+   Планшет и широкий экран.
+   560px — это ширина под телефон; на планшете такой столбец выглядит
+   зажатым, а на всю ширину карточки растягиваются в полосы и читать
+   их тяжело. Поэтому колонка расширяется ступенями, а не бесконечно.
+   ===================================================================== */
+
+@media (min-width: 768px) {
+  .page    { max-width: 760px; padding: 24px 28px calc(104px + env(safe-area-inset-bottom)); }
+  .tabbar  { max-width: 760px; }
+  .sheet   { max-width: 760px; border-radius: 22px; margin-bottom: 24px; }
+  .sheet-back { align-items: center; padding: 24px; }
+
+  .h1   { font-size: 36px; }
+  .sub  { font-size: 16px; }
+  .card { padding: 20px; }
+  .stat { font-size: 36px; }
+
+  /* На планшете палец крупнее не становится, но экран больше —
+     можно позволить кнопкам не растягиваться на всю ширину */
+  .tabbar a      { padding: 12px 2px 14px; }
+  .tabbar .ico   { font-size: 23px; }
+  .tabbar a, .tabbar .fab-label { font-size: 11px; }
+  .tabbar .fab   { width: 44px; height: 44px; min-height: 44px; font-size: 25px; }
+
+  .photo-drop { height: 220px; }
+}
+
+@media (min-width: 1180px) {
+  .page   { max-width: 920px; }
+  .tabbar { max-width: 920px; }
+}
