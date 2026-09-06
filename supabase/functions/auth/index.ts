@@ -8,7 +8,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { BOT_TOKEN, JWT_SECRET, SERVICE_KEY, SUPABASE_URL, CORS, json } from "../_shared/env.ts";
-import { verifyInitData } from "../_shared/telegram.ts";
+import { verifyInitData, verifyLoginWidget } from "../_shared/telegram.ts";
 import { hashPin, issueToken, readToken, verifyPin } from "../_shared/jwt.ts";
 
 const db = () => createClient(SUPABASE_URL(), SERVICE_KEY(), { auth: { persistSession: false } });
@@ -36,8 +36,13 @@ Deno.serve(async (req) => {
   try {
     // ---------------- Вход: initData -> JWT ----------------------------
     if (route === "auth") {
-      const { initData } = await req.json();
-      const tgUser = await verifyInitData(initData, BOT_TOKEN());
+      const body = await req.json();
+
+      // Два пути входа: Mini App отдаёт initData, обычный браузер —
+      // данные Telegram Login Widget. Дальше всё одинаково.
+      const tgUser = body.initData
+        ? await verifyInitData(body.initData, BOT_TOKEN())
+        : await verifyLoginWidget(body.tgAuth, BOT_TOKEN());
 
       const { data: staff } = await db()
         .from("staff").select("*").eq("telegram_id", tgUser.id).maybeSingle();

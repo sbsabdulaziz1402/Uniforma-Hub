@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import { Me, Settings, signIn } from "./lib/api";
-import { diagnostics, getInitData, tg } from "./lib/tg";
+import { Me, Settings, signIn, signInWidget, storedWidgetAuth } from "./lib/api";
+import { getInitData, tg } from "./lib/tg";
+import TelegramLogin from "./components/TelegramLogin";
 
 import Home from "./screens/Home";
 import Tasks from "./screens/Tasks";
@@ -23,6 +24,19 @@ export const useApp = () => useContext(AppCtx)!;
 export default function App() {
   const [ctx, setCtx] = useState<Ctx | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [needLogin, setNeedLogin] = useState(false);
+
+  const accept = useCallback((me: Me, settings: Settings, initData: string) => {
+    setCtx({ me, settings, initData });
+    setNeedLogin(false);
+    setError(null);
+  }, []);
+
+  const fail = useCallback((e: Error & { code?: string }) => {
+    setError(e.code === "no_access"
+      ? "Доступ не выдан. Обратитесь к администратору ателье."
+      : e.message);
+  }, []);
 
   useEffect(() => {
     const w = tg();
@@ -31,34 +45,45 @@ export default function App() {
     w.disableVerticalSwipes?.();
 
     const initData = getInitData();
-    if (!initData) {
-      setError("Откройте приложение через бота @UniformaHubBot");
+    if (initData) {
+      signIn(initData).then(({ me, settings }) => accept(me, settings, initData)).catch(fail);
       return;
     }
-    signIn(initData)
-      .then(({ me, settings }) => setCtx({ me, settings, initData }))
-      .catch((e: Error & { code?: string }) =>
-        setError(e.code === "no_access"
-          ? "Доступ не выдан. Обратитесь к администратору ателье."
-          : e.message));
-  }, []);
 
-  if (error) {
+    // Браузер: initData нет. Пробуем сохранённый вход, иначе показываем кнопку.
+    const saved = storedWidgetAuth();
+    if (saved) {
+      signInWidget(saved)
+        .then(({ me, settings }) => accept(me, settings, ""))
+        .catch(() => setNeedLogin(true));
+    } else {
+      setNeedLogin(true);
+    }
+  }, [accept, fail]);
+
+  if (needLogin) {
     return (
-      <div className="page">
-        <div className="empty" style={{ paddingBottom: 16 }}>{error}</div>
-        <div className="card">
-          <div className="stat-label" style={{ marginBottom: 8 }}>Диагностика</div>
-          {Object.entries(diagnostics()).map(([k, v]) => (
-            <div className="row" key={k} style={{ fontSize: 13, padding: "3px 0" }}>
-              <span className="hint">{k}</span>
-              <span style={{ textAlign: "right", wordBreak: "break-all" }}>{v}</span>
-            </div>
-          ))}
+      <div className="page" style={{ maxWidth: 420, paddingTop: "18vh" }}>
+        <div className="h1">Uniforma Hub</div>
+        <div className="sub">
+          Войдите через Telegram — тем же аккаунтом, чей номер внесён в список сотрудников.
+        </div>
+        <div className="card" style={{ padding: 24 }}>
+          <TelegramLogin onAuth={(user) => {
+            signInWidget(user).then(({ me, settings }) => accept(me, settings, "")).catch(fail);
+          }} />
+        </div>
+        {error && (
+          <div style={{ color: "var(--danger)", fontSize: 14, textAlign: "center" }}>{error}</div>
+        )}
+        <div className="hint" style={{ textAlign: "center", marginTop: 18 }}>
+          В Telegram приложение открывается кнопкой «Открыть» слева от поля ввода.
         </div>
       </div>
     );
   }
+
+  if (error) return <div className="empty">{error}</div>;
   if (!ctx) return <div className="empty">Загрузка…</div>;
 
   const role = ctx.me.role;

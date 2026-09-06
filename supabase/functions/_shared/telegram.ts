@@ -61,3 +61,54 @@ export function normalizePhone(input: string): string {
   if (d.length === 13 && d.startsWith("8998")) return `+${d.slice(1)}`;
   throw new Error(`Не удалось разобрать номер: ${input}`);
 }
+
+/**
+ * Проверка данных Telegram Login Widget (вход с обычного браузера).
+ *
+ * Схема подписи ОТЛИЧАЕТСЯ от initData:
+ *   Login Widget: secret = SHA256(bot_token)
+ *   Mini App:     secret = HMAC_SHA256("WebAppData", bot_token)
+ * Перепутать их — самая частая ошибка в этом месте.
+ */
+export interface TgAuth {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  photo_url?: string;
+  auth_date: number;
+  hash: string;
+}
+
+export async function verifyLoginWidget(
+  auth: TgAuth,
+  botToken: string,
+  maxAgeSec = 86400,
+): Promise<TgUser> {
+  const { hash, ...rest } = auth;
+  if (!hash) throw new Error("Данные входа без подписи");
+
+  const checkString = Object.entries(rest)
+    .filter(([, v]) => v !== undefined && v !== null)
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n");
+
+  const secret = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", enc.encode(botToken)),
+  );
+  const signature = hex(await hmac(secret, checkString));
+
+  if (signature !== hash) throw new Error("Неверная подпись данных входа");
+
+  if (!auth.auth_date || Date.now() / 1000 - auth.auth_date > maxAgeSec) {
+    throw new Error("Данные входа устарели, войдите заново");
+  }
+
+  return {
+    id: auth.id,
+    first_name: auth.first_name,
+    last_name: auth.last_name,
+    username: auth.username,
+  };
+}
